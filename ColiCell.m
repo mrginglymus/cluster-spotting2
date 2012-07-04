@@ -14,21 +14,26 @@ classdef ColiCell < handle
         cheYMeanIntensity
         cheZMeanIntensity
         clusters
+        expansion
         
     end
     
     methods
         
         function self = ColiCell( cellMask, tlx, tly, mIntensity,...
-                valid, sz, mIntensityZ )
-            self.cellMask = cellMask;
+                valid, sz, mIntensityZ, expansion )
+            self.cellMask = zeros( size( cellMask ) +...
+                ( 2 * [ expansion expansion ] ) );
+            self.cellMask( expansion + 1:end - expansion,...
+                expansion + 1:end-expansion ) = cellMask;
+            
             self.validCell = valid;
-            self.cellMask = cellMask;
-            self.topLeftX = ceil( tlx );
-            self.topLeftY = ceil( tly );
+            self.topLeftX = ceil( tlx ) - expansion;
+            self.topLeftY = ceil( tly ) - expansion;
             self.cheYMeanIntensity = mIntensity;
             self.cheZMeanIntensity = mIntensityZ;
             self.parentSize = sz;
+            self.expansion = expansion;
 
             
             if self.validCell == 0
@@ -40,11 +45,23 @@ classdef ColiCell < handle
             end
         end
         
+        function mask = expandedMask( self )
+            mask = bwmorph( self.cellMask, 'dilate',...
+                floor( self.expansion / 1.5 ) );
+        end
+        
         function mask = fullMask( self )
             mask = zeros( self.parentSize );
             mask( self.topLeftY:self.topLeftY + size( self.cellMask, 1 ) - 1,...
                 self.topLeftX:self.topLeftX + size( self.cellMask, 2 ) - 1 )...
                 = self.cellMask;
+        end
+        
+        function mask = expandedFullMask( self )
+            mask = zeros( self.parentSize );
+            mask( self.topLeftY:self.topLeftY + size( self.cellMask, 1 ) - 1,...
+                self.topLeftX:self.topLeftX + size( self.cellMask, 2 ) - 1 )...
+                = self.expandedMask();
         end
         
         function image = subImage( self, image )
@@ -54,26 +71,26 @@ classdef ColiCell < handle
                 size( self.cellMask, 2 ) - 1 );
         end
         
+        
         function getClusters( self, image, cellBasalLevel, blackLevel,...
                 statSet, threshold, searchRadius, minSize, maxSize,...
                 xPix, yPix )
-            
-            maskedImage = image .* self.fullMask();
+                        
+            maskedImage = image .* self.expandedFullMask();
             figure(1);
             imshow( maskedImage, [min(maskedImage(:)), max(maskedImage(:))]);
-            self.clusters = [];
+            self.clusters = {};
             
+            count = 0;
             
             while(1)
                 ok = true;
+                count = count + 1;
                                 
                 [ maxPixelValue, maxPixelIndex ] = max( maskedImage(:) );
                 [ maxPixelY, maxPixelX ] = ind2sub( size(...
                     maskedImage ), maxPixelIndex );
-                
-                disp( maxPixelValue )
-                disp( self.cheZMeanIntensity )
-                
+                                
                 if ( maxPixelValue < threshold * self.cheZMeanIntensity )
                     break
                 end
@@ -105,7 +122,7 @@ classdef ColiCell < handle
                 clusterCoMX = sumXMass / sumMass;
                 clusterCoMY = sumYMass / sumMass;
                 
-                % CENTROID TO BE CENTERED ON CLUSTER (still in cell space)
+                % CENTROID TO BE CENTERED ON CLUSTER
                 % centroid is given relative to maxPixelIndex always
                 
                 centroidX = clusterCoMX - maxPixelX;
@@ -115,36 +132,34 @@ classdef ColiCell < handle
                 
                 xyInput = zeros( 1, numel( clusterImage ) );
                 zOutput = double( reshape( clusterImage -...
-                    clusterBasalLevel, 1, numel( clusterImage ) ) );
-                figure(5000)
-                mesh(clusterImage)
-                %{
+                    clusterBasalLevel - blackLevel,...
+                    1, numel( clusterImage ) ) );
+                
                 beta = nlinfit( xyInput, zOutput, @( beta, ~ )...
                     beta(3) *  exp( -2 * ( ( xPix - beta(1) ) .^ 2 +...
                     ( yPix - beta(2) ) .^ 2 ) /...
                     ( beta(4) ) ^ 2 ), beta, statSet );
-                %}
+                
+                self.clusters{ count } = ColiCluster(...
+                    beta(1) + maxPixelX, beta(2) + maxPixelY,...
+                    beta(3), beta(4) );
+                
                 
                 maskedImage(...
                     clusterBoxYMin:clusterBoxYMax,...
                     clusterBoxXMin:clusterBoxXMax ) = 0;
                 
-                figure(2);
-                imshow(maskedImage);
+     
                 
-                pause
                 
             end
+            
+        end
+        
+        function cc = clusterCount( self )
+            cc = numel( self.clusters );
         end
         
     end
     
-end
-
-
-function z = gaussianMesh( beta, ~ )
-global xPix yPix;
-
-z = beta(3)*exp(-2*((xPix-beta(1)).^2+(yPix-beta(2)).^2)/(beta(4))^2);
-z = reshape( z, 1, numel(z) );
 end

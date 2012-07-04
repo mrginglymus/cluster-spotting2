@@ -35,7 +35,7 @@ classdef ColiImage < handle
             self.imageSize = size( imread( self.cellImage ) );
             self.pixelSize = pixelSize;
             
-            self.getCells( 1000, 5000000, 15000000, 1.3, 0.85, [] );
+            self.getCells( 1000, 5000000, 15000000, 1.3, 0.85, [], 500 );
                                   
         end
         
@@ -59,7 +59,7 @@ classdef ColiImage < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
         function getCells( self, border, minSize, maxSize, aspectRatio,...
-                solidity, maxBright )
+                solidity, maxBright, expansion )
             
             %   load the error definition file
             load( 'errors.mat' );
@@ -71,6 +71,11 @@ classdef ColiImage < handle
             minSize = minSize / ( self.pixelSize ^ 2 );
             maxSize = maxSize / ( self.pixelSize ^ 2 );
             border = ceil( border / self.pixelSize );
+            
+            expansion = ceil( expansion / self.pixelSize );
+            
+            %   get the black level
+            blackLevel = self.getBlackLevel( 'cell', 16 );
             
             %   locate the cell edges using the canny filter. This can only
             %   tolerate a moderate level of noise, so run a quick gaussian
@@ -151,8 +156,9 @@ classdef ColiImage < handle
                 
                 %   create a new cell object with all of the above
                 self.cells{i} = ColiCell( rp(i).Image, rp(i).BoundingBox(1),...
-                    rp(i).BoundingBox(2), rp(i).MeanIntensity, valid,...
-                    self.imageSize, rpz(i).MeanIntensity );
+                    rp(i).BoundingBox(2),...
+                    rp(i).MeanIntensity - blackLevel, valid,...
+                    self.imageSize, rpz(i).MeanIntensity, expansion );
                
             end
                         
@@ -165,7 +171,7 @@ classdef ColiImage < handle
             ballRadius = floor( 1000 / self.pixelSize );
             
             image = double( imread( self.clusterImage ) );
-            blackLevel = getBlackLevel( self, 'Cluster' );
+            blackLevel = getBlackLevel( self, 'cluster', 8 );
            
             cellBasalLevel = imopen( image, strel( 'ball', ballRadius,...
                 ballRadius, 0 ) );
@@ -177,10 +183,13 @@ classdef ColiImage < handle
             maxSize = maxSize / self.pixelSize;
             searchRadius = floor( searchRadius / self.pixelSize );
             
-            [ xPix, yPix ] = meshgrid( -searchRadius:searchRadius );
+            pixels = meshgrid( -searchRadius:searchRadius );
             
-            %for i = 1:numel( self.cells )
-            for i = 3:3
+            xPix = reshape( pixels, 1, numel( pixels ) );
+            yPix = reshape( pixels', 1, numel( pixels ) );
+            
+            for i = 1:numel( self.cells )
+            %for i = 3:3
                 self.cells{i}.getClusters( image, cellBasalLevel,...
                     blackLevel, statSet, threshold, searchRadius,...
                     minSize, maxSize, xPix, yPix )
@@ -188,17 +197,15 @@ classdef ColiImage < handle
             
         end
             
-        function blackLevel = getBlackLevel( self, im )
-            if strcmp( im, 'Cell' )
+        function blackLevel = getBlackLevel( self, im, blackLevelCutoff )
+            if strcmpi( im, 'cell' )
                 image = imread( self.cellImage );
-            elseif strcmp( im, 'Cluster' )
+            elseif strcmpi( im, 'cluster' )
                 image = imread( self.clusterImage );
             end
-            centres = 2^10:2^11:2^16-2^10;
-            n = histc( image(:), centres );
-            cs = cumsum( n.*centres' );
-            csn = cumsum( n );
-            blackLevel = cs(8)/csn(8);
+            image = image(:);
+            blackLevel = mean( image(...
+                image < ( 2^16 / blackLevelCutoff ) ) );
         end
         
         function displayOverlay( self )
@@ -208,15 +215,15 @@ classdef ColiImage < handle
             
             figure(1);
             
-            ceI = imread( self.cellImage ) / 256;
-            clI = imread( self.clusterImage ) / 256;
+            ceI = imread( self.cellImage );
+            clI = imread( self.clusterImage );
             max(ceI(:))
             max(clI(:))
             im = cat( 3, ceI, clI, z ) ;
             max(im(:))
             size( im )
             
-            imshow( cat( 3, ceI, clI, z ), 'DisplayRange', [ 0, 2^15]);
+            imshow( cat( 3, ceI, clI, z ) );
             
         end
             
@@ -237,7 +244,7 @@ classdef ColiImage < handle
             bent_mask = zeros( self.imageSize );
             
             for i = 1:numel( self.cells )
-                mask = self.cells{i}.fullMask();
+                mask = self.cells{i}.expandedFullMask();
                 if self.cells{i}.validCell == 0
                     cell_mask = cell_mask | mask;
                 elseif self.cells{i}.validCell == TOO_BIG || self.cells{i}.validCell == TOO_SMALL
