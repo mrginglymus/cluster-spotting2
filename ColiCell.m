@@ -77,15 +77,14 @@ classdef ColiCell < handle
                 xPix, yPix )
                         
             maskedImage = image .* self.expandedFullMask();
-            figure(1);
-            imshow( maskedImage, [min(maskedImage(:)), max(maskedImage(:))]);
+            %figure(1);
+            %imshow( maskedImage, [min(maskedImage(:)), max(maskedImage(:))]);
             self.clusters = {};
             
             count = 0;
             
             while(1)
                 ok = true;
-                count = count + 1;
                                 
                 [ maxPixelValue, maxPixelIndex ] = max( maskedImage(:) );
                 [ maxPixelY, maxPixelX ] = ind2sub( size(...
@@ -140,9 +139,21 @@ classdef ColiCell < handle
                     ( yPix - beta(2) ) .^ 2 ) /...
                     ( beta(4) ) ^ 2 ), beta, statSet );
                 
-                self.clusters{ count } = ColiCluster(...
-                    beta(1) + maxPixelX, beta(2) + maxPixelY,...
-                    beta(3), beta(4) );
+                if beta(4) < minSize
+                    ok = false;
+                end
+                if beta(4) > maxSize
+                    ok = false;
+                end
+                
+                
+                
+                if ok
+                    count = count + 1;
+                    self.clusters{ count } = ColiCluster(...
+                        beta(1) + maxPixelX, beta(2) + maxPixelY,...
+                        beta(3), beta(4) );
+                end
                 
                 
                 maskedImage(...
@@ -158,6 +169,14 @@ classdef ColiCell < handle
         
         function cc = clusterCount( self )
             cc = numel( self.clusters );
+        end
+        
+        function cf = clusterFraction( self )
+            cf = zeros( 1, numel( self.clusters ) );
+            for i = 1:numel( self.clusters )
+                cf(i) = self.clusters{i}.fraction(...
+                    self.cheZMeanIntensity, self.area );
+            end
         end
         
     end

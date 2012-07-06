@@ -36,6 +36,8 @@ classdef ColiImage < handle
             self.pixelSize = pixelSize;
             
             self.getCells( 1000, 5000000, 15000000, 1.3, 0.85, [], 500 );
+            
+            self.getClusters( 1.5, 600, 250, 750 );
                                   
         end
         
@@ -164,6 +166,18 @@ classdef ColiImage < handle
                         
         end
         
+        function validCells = validCells( self, varargin )
+            validCells = [];
+            for i = 1:numel( self.cells )
+                if self.cells{i}.validCell == 0
+                    validCells = [ validCells, self.cells{i} ];
+                end
+            end
+            if nargin == 2
+                validCells = validCells(varargin{1});
+            end
+        end
+        
         function getClusters( self, threshold, searchRadius, minSize,...
                 maxSize )
             
@@ -188,9 +202,10 @@ classdef ColiImage < handle
             xPix = reshape( pixels, 1, numel( pixels ) );
             yPix = reshape( pixels', 1, numel( pixels ) );
             
-            for i = 1:numel( self.cells )
-            %for i = 3:3
-                self.cells{i}.getClusters( image, cellBasalLevel,...
+            validCells = self.validCells();
+            
+            for i = 1:numel( validCells )
+                validCells(i).getClusters( image, cellBasalLevel,...
                     blackLevel, statSet, threshold, searchRadius,...
                     minSize, maxSize, xPix, yPix )
             end
@@ -231,9 +246,9 @@ classdef ColiImage < handle
         function displayCells( self, im )
             
             load( 'errors.mat' );
-            if strcmp( im, 'cell' )
+            if strcmpi( im, 'cell' )
                 image = imread( self.cellImage );
-            elseif strcmp( im, 'cluster' )
+            elseif strcmpi( im, 'cluster' )
                 image = imread( self.clusterImage );
             end
             
@@ -285,7 +300,31 @@ classdef ColiImage < handle
             hold off;
             
         end
-
+        
+        function cc = clusterCount( self )
+            validCells = self.validCells();
+            cc = zeros( 1, numel( validCells ) );
+            for i = 1:numel( validCells )
+                cc( i ) = validCells(i).clusterCount();
+            end
+        end
+        
+        function varargout = clusterHistogram( self )
+            h = histc( self.clusterCount(), 0:4 );
+            varargout{1} = h;
+            if nargout == 0
+                bar( 0:4, h, 'histc' )
+            end
+        end
+        
+        function cf = clusterFraction( self )
+            validCells = self.validCells();
+            cf = [];
+            for i = 1:numel( validCells )
+                cf = [ cf, validCells(i).clusterFraction ];
+            end
+        end
+        
             
     end
 end

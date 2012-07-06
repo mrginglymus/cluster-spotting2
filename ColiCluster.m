@@ -28,9 +28,7 @@ classdef ColiCluster < handle
         end
         
         function fraction = fraction( self, meanIntensity, area )
-            
             fraction = self.volume() / ( meanIntensity * area );
-            
         end
         
     end
